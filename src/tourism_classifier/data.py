@@ -28,6 +28,13 @@ def load_raw(path: str | Path, sheet: str = "Tourism") -> pd.DataFrame:
     return pd.read_csv(path)
 
 
+def validate_schema(df: pd.DataFrame) -> None:
+    """Fail early with a readable message if expected columns are missing."""
+    missing = [c for c in [*FEATURES, TARGET] if c not in df.columns]
+    if missing:
+        raise ValueError(f"Input data is missing required columns: {missing}")
+
+
 def clean(df: pd.DataFrame) -> pd.DataFrame:
     """Row-wise, target-free cleaning. Safe to apply before splitting.
 
@@ -35,6 +42,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     statistics are learned from training folds only (the legacy notebook imputed with
     group means that used ``ProdTaken``, leaking the label into the features).
     """
+    validate_schema(df)
     df = df.copy()
     for col in df.select_dtypes(include=["object", "string"]).columns:
         df[col] = df[col].astype("string").str.strip()
@@ -66,9 +74,9 @@ def make_synthetic(n: int = 4000, seed: int = 0) -> pd.DataFrame:
     pitched = np.array(["Basic", "Standard", "Deluxe", "Super Deluxe", "King"])[
         np.clip(rank + rng.integers(0, 2, n) - (rng.random(n) < .2), 0, 4)]
     followups = rng.integers(1, 7, n).astype(float)
-    logit = (-2.6 + 1.3 * passport + .55 * (marital == "Single") + .45 * (marital == "Unmarried")
-             - .03 * (age - 35) + .18 * (followups - 3.5) - .35 * (pitched == "Deluxe")
-             + .25 * (pitched == "Basic") + rng.normal(0, .5, n))
+    logit = (-3.2 + 1.9 * passport + .0001 * (income - 25000) + .55 * (marital == "Single") + .45 * (marital == "Unmarried")
+             - .03 * (age - 35) + .3 * (followups - 3.5) + .5 * (rank == 3) - .35 * (pitched == "Deluxe")
+             + .25 * (pitched == "Basic") + rng.normal(0, .3, n))
     taken = (rng.random(n) < 1 / (1 + np.exp(-logit))).astype(int)
     df = pd.DataFrame({
         "CustomerID": np.arange(200000, 200000 + n), "ProdTaken": taken, "Age": age,

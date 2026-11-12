@@ -28,3 +28,30 @@ def test_end_to_end_beats_chance():
     res = run(make_synthetic(1500), models=["logreg", "hist_gb"], cv=3)
     assert res.test_metrics["roc_auc"] > 0.65
     assert res.model.predict_proba(make_synthetic(10).pipe(clean).pipe(lambda d: d[FEATURES])).shape == (10, 2)
+
+
+def test_schema_validation_message():
+    import pytest
+    with pytest.raises(ValueError, match="missing required columns"):
+        clean(make_synthetic(50).drop(columns=["Passport"]))
+
+
+def test_profit_threshold_contacts_only_profitable():
+    from tourism_classifier.train import profit_threshold
+    y = np.array([0] * 80 + [1] * 20)
+    p = np.concatenate([np.linspace(0, .5, 80), np.linspace(.4, 1, 20)])
+    t_cheap = profit_threshold(y, p, cost_contact=0.1, profit_purchase=10)
+    t_dear = profit_threshold(y, p, cost_contact=9, profit_purchase=10)
+    assert t_cheap < t_dear
+
+
+def test_cli_train_and_predict(tmp_path):
+    from tourism_classifier.cli import main, predict_main
+    main(["--synthetic", "--models", "logreg", "--cv", "3", "--out", str(tmp_path),
+          "--cost-contact", "1", "--profit-purchase", "8"])
+    assert (tmp_path / "report.md").exists() and (tmp_path / "model.joblib").exists()
+    csv = tmp_path / "new.csv"
+    make_synthetic(40, seed=3).drop(columns=["ProdTaken"]).to_csv(csv, index=False)
+    predict_main(["--model", str(tmp_path / "model.joblib"), "--data", str(csv),
+                  "--out", str(tmp_path / "scored.csv")])
+    assert (tmp_path / "scored.csv").exists()

@@ -12,28 +12,42 @@ Predicts which customers of the fictional "Visit with us" travel company will bu
 | Fixed 0.5 threshold | Threshold tuned on out-of-fold predictions for F-beta (`--beta`) |
 | 300-cell, 11 MB notebook + HTML export, no code reuse | Importable package, CLI, tests, CI, short executed notebook |
 
-The original notebook is kept in `legacy/` (outputs stripped). The `Tourism.xlsx` dataset is not in the repo.
+The original notebook is kept in `legacy/` (outputs stripped).
 
 ## Usage
 
 ```bash
 pip install -e ".[dev]"
-tourism-train --data data/Tourism.xlsx        # sheet "Tourism"
-tourism-train --synthetic                     # demo data, same schema
+tourism-train --data data/Tourism.xlsx        # sheet "Tourism"; or: tourism-train --synthetic
 pytest
 ```
 
-Outputs go to `artifacts/` (`model.joblib` with the fitted pipeline and tuned threshold, `cv_results.csv`, `test_metrics.json`).
+Useful options:
 
-```python
-import joblib
-bundle = joblib.load("artifacts/model.joblib")
-p = bundle["model"].predict_proba(X)[:, 1]
-contact = p >= bundle["threshold"]
+| Flag | Effect |
+|---|---|
+| `--tune 20` | Randomised hyper-parameter search (20 draws per model, nested CV, slower) |
+| `--beta 2` | Tune the cut-off for F2 (favours recall / wider outreach) |
+| `--cost-contact 1 --profit-purchase 8` | Pick the cut-off that maximises expected campaign profit instead |
+| `--models xgboost stacking` | Compare only a subset |
+| `--n-jobs -1` | Parallelise CV |
+
+Each run writes to `artifacts/`: `model.joblib` (fitted pipeline + tuned threshold), `cv_results.csv`, `test_metrics.json`, and `report.md` with `evaluation.png` (ROC, precision-recall, calibration, confusion matrix) and `importance.png` (permutation importance).
+
+Score new customers (CSV or XLSX with the same columns; `ProdTaken` optional):
+
+```bash
+tourism-predict --model artifacts/model.joblib --data new_customers.csv --out scored.csv
 ```
+
+The output is ranked by purchase probability with a `contact` flag from the tuned threshold.
+
+## Dataset
+
+"Tourism Package Prediction" (4,888 customers, 20 columns), widely available as a public teaching dataset. Put it at `data/Tourism.xlsx` (git-ignored). Without it, `--synthetic` generates data with the same schema and quirks (`Fe Male`, typo'd pitch durations, missing values). **Metrics on synthetic data only demonstrate that the pipeline works.**
 
 ## Layout
 
-- `src/tourism_classifier/` – `data.py` (load/clean/synthetic), `models.py` (pipelines), `train.py` (CV, thresholding, evaluation), `cli.py`
+- `src/tourism_classifier/` – `data.py` (load/clean/synthetic), `models.py` (pipelines), `train.py` (CV, tuning, thresholding), `report.py` (plots/report), `cli.py`
 - `notebooks/tourism_classifier.ipynb` – walkthrough
 - `tests/` – unit and end-to-end tests
